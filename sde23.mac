@@ -860,27 +860,30 @@ rSD_sol (X, x, t, w, t0, x0):=block (
 	p2:part(X,2),
    [_a, _b ]: getDriftDiff(p2, dt, dw),  
    h: integrate(1/_b, x),  
-   rs: alpha*_b*h+1/2*_b*ratsimp(diff(_b, x, 1))=_a,
+   rs: alpha*_b*h+1/2*_b*ratsimp(diff(_b, x, 1))=_a ,
    sol:solve(rs, alpha),
    if length(sol)>1 then alpha:second(sol) else alpha:first(sol),
+   print(alpha),
    beta : alpha*h,
    if freeof(x, alpha) then (
-	if alpha=0 then
+	if alpha=0 then (
 		sol: subst(x=x0, h)+ w,
 	    ret: ratsimp(solve(sol,x))
-	)else ( 
+		)
+	else ( 
 		wi: Int(exp(-alpha*t)*dt),
 		sol :exp(alpha*t)*subst(x = x0, h)+exp(alpha*t)*wi,
-		rs:solve(h, x),
+		rs: solve(h, x),
 		ret: subst(sol, x, rs)
+	),
+	return (ret)
+   ) ,
+	if freeof(x, beta) then (
+		sol:solve(h = beta*t+w+subst(x = x0 ,h) , x),
+		ret:ratsimp(sol)
 	)
-   ) else
-		if freeof(x, beta) then (
-			sol:solve(h = beta*t+w+subst(x = x0 ,h) ,x),
-			ret:ratsimp(sol)
-		)
-		else 
-			return (false),
+	else return (false),
+	 
 	return (ret)
 )$
  
