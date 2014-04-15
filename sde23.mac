@@ -151,6 +151,7 @@ print("rules for differentials")$
 ****************************/   
 (matchdeclare(dvar, cdiffp, cvar, regvarp),
 	defrule(itodifvar, Diff(dvar), 0),
+	defrule(itodifvar3, cvar, %DiffVars[cvar]),
     defrule(itodifvar2, Diff(cvar), %DiffVars[cvar]),
     defrule(itointvar,  Int(dvar), %IntVars[dvar]), 
     defrule(itointvar2, dvar, %IntVars[dvar]),  
@@ -247,7 +248,7 @@ matchdeclare (g, true, u, true, x, atom, k, true),
 /*******************************
 *  Computes Ito differential of compund functions
 ****************************/  
-ItoDiffExpand(F,s):=block([ _u, _f, ret:false, _z, x, k, sop, sargs ] , 
+ItoDiffExpand(F, s):=block([ _u, _f, ret:false, _z, x, k, sop, sargs ] , 
    if atom(F) then return (Diff(F)),
    sop:op(F), sargs:inargsa(F),
    if isOp(F, "^")  then (   
@@ -694,9 +695,17 @@ ItoSolve(X, xsol, t, w):=block( [ ret, a, b, dt:%DiffVars[t], dw:%DiffVars[w]] ,
     [a,b]:getDriftDiff(ret, dt, dw)
 )$
 
-consSDEq(a, b, x, t, w):=block([dx, dt:%DiffVars[t], dw:%DiffVars[w] ]   ,
-     dx:itodifvar1(Diff(x)), "we create a differential variable",
-     dx=a*dt +b*dw
+consSDEq(a, b, x, t, w):=block([dx, dt:%DiffVars[t], dw:%DiffVars[w] , dwl]   ,
+  if not listp(w) and not listp(b) then  (
+     	dx:regvar(x), "we create a differential variable",     
+     	return (dx=a*dt +b*dw)
+     ),
+	if listp(w) and listp(b) and length (b)=length (w) then (
+		dx:regvar(x), "we create a differential variable",     
+		dwl:map(itodifvar3, w),
+     	return (dx=a*dt + b . dwl)
+		),
+	return (false)
 )$
 
 stDer(X, n, t, w) :=block( [i, dX, dt:%DiffVars[t], dw:%DiffVars[w], _a, _b  ], 
@@ -1340,7 +1349,7 @@ splitByPow(V, t) := block( [ret,  %A:false, %N:0],
 /*******************************
 *         Utility functions
 ****************************/  
-
+/*
 cmult(la, lb):=block ([n, ret] ,
     if nlistp (la) or nlistp (lb) then return (false),
     n:length(la),  
@@ -1348,7 +1357,7 @@ cmult(la, lb):=block ([n, ret] ,
     ret: sum( la[i]*lb[i], i,1, n),
     return (ret)
 )$
-
+*/
 
 lfreeof2(exp, lst):=block([e, s:true ],    
   for e in lst do s:s and freeof(e,exp),  
