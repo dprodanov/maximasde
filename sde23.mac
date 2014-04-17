@@ -131,6 +131,7 @@ declare (EE, linear)$
 
 /*
  Simplest properties of Ito Integral and Ito Differential:  distributivity
+ *  code contributed by Robert Dodier
 */
 declare_distributes_over (Int, ["[", "="])$
 declare_distributes_over (Diff, ["[", "="])$
@@ -193,7 +194,32 @@ qvE(F, x ):= block ( [s, ss:0, i, j, n ],
     return (s+ss)
 )$
 
+/****
+* Fundamental integration by part function
+***/
+qvI(F, z, x ):= block ( [s:0, ss:0, i, j, n, q, Fa ],   
+    if atom(x) then x:[x],
+    n:length(x),
+	Fa:'integrate (F,z),
+	for i:1 thru n do (
+		if z# x[ i] then s: s +diff(Fa, x[i], 1)*Diff(x[i])
+  	),
+    s:apply1(s,itodifvar2),
 
+    for i:1 thru n do
+        for j:1 thru n do
+            ss:ss+ 1/2*diff(Fa, x[i], 1, x[j], 1)* QV(Diff(x[i]), Diff(x[j])),       
+    ss: apply1(ss, itodifvar2), 
+	ss: apply1(Int(ss), itointvar),
+	s : apply1(Int(s), itointvar),
+	Fa:ev (Fa, nouns),
+	if verbose then (
+		q:diff(Fa, z, 1)*Diff(z),
+		q:apply1(q,itodifvar2),
+		return (Int (q)=Fa -s - ss)
+	) else
+		return (Fa -s - ss)
+)$
 
 
 (" product simplification",
@@ -222,13 +248,13 @@ simpmult2(V):=block( [ ret, sop:op(V), X],
 ItoDiff(expr, t, w):=block([ ret:false, p1, p2, comp:false, dt:%DiffVars[t], dw:%DiffVars[w] ],
     if atom(expr) then return (apply1(Diff(expr), itodifvar2, itodifc)),
     if opDiffp(expr) then ret:expr else ret:Diff(expr),   
-    if opIntp(expr) then  return (apply1 (ret, itodifint)),
+    if opIntp(expr) then return (apply1 (ret, itodifint)),
   
     if opEqp(expr) then (
         comp:true,
         p1:part(ret,1),
 		p1:apply1 (p1, itodifint),
-        ret:part(ret,2)
+        ret:part(ret, 2)
     ), 
     ret: apply1(ret, itodifint,   itogen_full),
     ret: ev(ret, diff),
@@ -385,6 +411,12 @@ intsimp2(V):= block( [vl:listofvars(V), y, ret, x, %B, %C, s, n] ,
 ItoDIsimp (expr) := block ( [ ret ],
 	ret:apply1(expr, itodiffint2, itolntsubt2, itolntsimp, itolin),
 	ret:ev(ret, nouns)
+)$
+
+( "integral-differntial simplifications; TODO",
+matchdeclare(V, true, x, atom, n, integerp, dx, cdiffp),
+	defrule(itolntsubt3, dx*diff(Int(V), x, n), Int (dx* diff(V,x, n) ) ),
+	"let(dx*diff(Int(V), x, n), Int (dx* diff(V,x, n) ) )"
 )$
 
 /*******************************
