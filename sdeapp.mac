@@ -1,0 +1,416 @@
+/* 
+ * SDE App 1.0 
+  The library depeds on SDE 2 package
+ * 
+ * (C) Dimiter Prodanov
+ *
+ * @version 1.0 Date 19 Apr 2014
+ *
+ * @author Dimiter Prodanov
+ *        IMEC
+ *
+ * @contents: This library implements applications for stochastic calculs
+ *
+ * The development of th package was inspired by Wilfrid Kendall's Itovsn3 MMA package and 
+ * Andrey Zorin's SDE Maxima package.
+ *
+ *  The library is based on  the concepts presented in the paper
+ * On Ito’s formula for multidimensional Brownian motion.  Hans Follmer and Philip  Protter,  Probab. Theory Relat. Fields 116, 1–20 (2000)
+ * 
+ * @license This library is free software; you can redistribute it and/or
+ *      modify it under the terms of the GNU Lesser General Public
+ *      License as published by the Free Software Foundation; either
+ *      version 2.1 of the License, or (at your option) any later version.
+ *
+ *      This library is distributed in the hope that it will be useful,
+ *      but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *      MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *       Lesser General Public License for more details.
+ *
+ *      You should have received a copy of the GNU Lesser General Public
+ *      License along with this library; if not, write to the Free Software
+ *      Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
+ 
+if get('sde2,'version)=false then ( 
+    load("sde23.mac")
+    
+ )$
+ if get('sdeexp,'version)=false then ( 
+    load("sdeexp.mac")
+    
+ )$
+
+sdetrigsimp():= block([x, %k ],
+    errcatch(  
+    "handy simplifications",
+    matchdeclare(x, true, %k, true),
+    tellsimpafter(%k/sec(x), %k*cos(x)), 
+    tellsimpafter(%k/cos(x), %k*sec(x)), 
+    tellsimpafter(%k/csc(x), %k*sin(x)), 
+    tellsimpafter(%k/sin(x), %k*csc(x)), 
+    tellsimpafter(%k/tan(x), %k*cot(x)), 
+    tellsimpafter(%k/cot(x), %k*tan(x)), 
+    tellsimpafter(%k*cos(x)*sec(x), %k), 
+    tellsimpafter(%k*tan(x)*atan(x), %k), 
+    tellsimpafter(%k*sec(x)*sin(x), %k*tan(x)),
+    tellsimpafter(%k*csc(x)*cos(x), %k*cot(x)),
+    tellsimpafter(sin(x)^2+cos(x)^2, 1)
+    )
+)$
+
+/* 
+*  Constructs the forward Kolmogorov equation of the Ito process - 1D
+*/
+KolmFEq(X, x, t, w ):=block(
+[ a:0, b:0, eq, eq2, dt:%DiffVars[t], dw:%DiffVars[w] ] ,   
+    [a,b]:getDriftDiff(X, dt, dw),
+    print(" drift: ",a, "  diffusion: " ,b),
+    if not (a and b) then return (false), 
+    eq: diff(p(x,t),t)=-diff(a*p(x,t),x)+1/2*diff(b^2*p(x,t),x,2),
+    eq2: diff(b^2*p(x),x,1)=2*a*p(x),
+    return ([eq, eq2])
+)$
+
+/* 
+*  Constructs the backward Kolmogorov equation of the Ito process - 1D
+*/
+KolmBEq(X, x, t, w ):=block(
+[ a:0, b:0, eq, eq2, dt:%DiffVars[t], dw:%DiffVars[w] ] ,   
+    [a,b]:getDriftDiff(X, dt, dw),
+    print(" drift: ",a, "  diffusion: " ,b),
+    if not (a and b) then return (false), 
+    eq: diff(u(x,t),t)=-a*diff(u(x,t),x)-b^2/2*diff(u(x,t),x,2),
+    eq2: +a*diff(u(x,t),x)+b^2/2*diff(u(x,t),x,2)=0,
+    return ([eq, eq2])
+)$
+
+/*******************
+*  Constructs the forward Kolmogorov equation of the Ito process -ND
+*******************/
+KolmFEqN(a, b, x, t ):=block([eq, s, b2, ss:0, i, j, n ] , 
+    if atom(x) then return (false),
+    if not listp(a) then return (false),
+    if not matrixp(b) then return (false),
+    if (length(x) # length(a)) or 
+    (length(a) # length(b)) or  
+    (length(x) # length(b)) then return (false),
+    n:length(x),    
+    s:sum(diff(a[i]*p(x,t), x[i], 1), i, 1, n),
+    b2: b.b,
+    for i:1 thru n do
+        for j:1 thru n do 
+            ss:ss+ 1/2*diff(b2[i,j]*p(x,t), x[i], 1, x[j], 1),                  
+    eq: 'diff(p(x,t),t)=-s +ss,
+    eq2: -s +ss=0,
+    return ([eq, eq2])
+)$
+
+/****************
+*
+*****************/
+KolmFEqSolp(X, p, t, w, trig ):=block(
+[ a:0, b:0, eq, eq2, dt:%DiffVars[t], dw:%DiffVars[w] ] ,   
+    [a,b]:getDriftDiff(X, dt, dw),   
+    if not (a and b) then return (false), 
+    print(" drift: ",a, "  diffusion: " ,b),
+    eq: diff(p,t)+diff(a*p,x)-1/2*diff(b^2*p,x,2)=0,
+    eq: ratsimp(eq),
+    if trig then eq: trigrat(eq),
+    eq2: diff(b^2*p,x,1)-2*a*p=0,
+    eq2: ratsimp(eq2),
+    if trig then eq2: trigrat(eq2),
+    return ([eq, eq2])
+)$
+
+
+/*
+* ItoChk(X, xsol, t, dt, w, dw) checks if the expression xsol is a solution of the equation X
+*/
+ItoChk(X, xsol, t, w):=block([ ret, p1:xsol, p2, dx, eq, x, dt:%DiffVars [t], dw:%DiffVars [w] ] ,
+   if opEqp(X) then eq:part(X,2) else return(false),
+   if listp(xsol) then (
+     if emptyp(xsol) then return (false),
+     xsol:first(xsol)
+   ),
+   if opEqp(xsol) then (
+     x :part(xsol,1),
+     p1:part(xsol,2)
+   ), 
+   dx:ItoDiff(p1, t, w ),
+   dx:ItoDIsimp(dx),
+   "print (p1, dx)",
+   eq: subst(p1,x, eq), 
+   p2: eq=dx,
+   ret: [X, xsol, p2, is(p2) ],
+   return (ret)
+)$
+
+ItoSolve(X, xsol, t, w):=block( [ ret, a, b, dt:%DiffVars[t], dw:%DiffVars[w]] , 
+    ret:ItoChk(X, xsol, t, w),
+    ret:third(ret) ,
+    ret:ret-part(ret,1),
+    "print(ret)",
+    if is(ret) then return (ret) else
+    [a,b]:getDriftDiff(ret, dt, dw)
+)$
+
+stDer(X, n, t, w) :=block( [i, dX, dt:%DiffVars[t], dw:%DiffVars[w], _a, _b  ], 
+    if (n <=0) then n:1,
+    for i:1 thru n do (
+        dX:ItoDiff(X, t,w),
+        dX:ItoDIsimp(dX),
+        "print (i, dX)",
+        if dX=0 then return (_a:0),  
+        [_a, _b]: getDriftDiff(dX, dt, dw),
+        X:_a
+    ),  
+    ItoDIsimp(_a),
+    return (_a)
+)$
+
+stDBer(X, p, n, t, w) :=block( [i, dX, x, dt:%DiffVars[t], dw:%DiffVars[w], _a, _b  ], 
+    if not opEqp(X) then return (false), 
+    x:part(X,1),
+    if (n <=0) then n:1,
+    for i:1 thru n do (
+        dX:ItoDiff(X, t,w),
+        dX:ItoDIsimp(dX),       
+        "print (i, dX)",
+        if dX=0 then return (_a:0),  
+        _a:DriftTransform(dX, p, x, t, w),
+        X:_a
+    ),  
+    ItoDIsimp(_a),
+    return (_a)
+)$
+
+stDcons(aa, bb, x, t, w):=block( [ X, eq1, dt:%DiffVars[t], dw:%DiffVars[w], _a, _b  ] ,
+    X:consSDEq(aa, bb, x, t, w),
+    "print (x)",
+    vars:[x, t, w],  
+    if not emptyp(listofvars(aa)) then
+        eq1: ItoSubstFull(X, aa, vars, [w,t])
+    else
+        eq1: ItoSubstFull(X, aa, aa, [w,t]),
+    nv:part(X,2),
+    "print (eq1)",
+    eq1: subst(nv, Diff(x), eq1),
+    eq1: simpmult(eq1), 
+    eq1: apply1(eq1 , itodifvar1),  
+    [ _a, _b ]: getDriftDiff(eq1, dt, dw),
+    return (_a)
+)$
+
+stDSubstEq(Y, x, t, w):=block( [ eq1, nv, vars, dt:%DiffVars[t], dw:%DiffVars[w], _a, _b  ] ,
+    if opEqp(Y) then nv:part(Y,2) else nv:Y,
+    [_a, _b ]: getDriftDiff(Y, dt, dw),
+    print ("drift: ", _a, "  diffusion: ", _b),
+    vars:[x, t, w],
+    if not emptyp(listofvars(_a)) then
+        eq1: ItoSubstFull(Y, _a, vars, [w,t])
+    else
+        eq1: ItoSubstFull(Y, _a, _a, [w,t]),
+    "print (nv, eq1)",
+    eq1: subst(nv, Diff(x), eq1),
+    eq1: simpmult(eq1),
+    "print (eq1)",
+    eq1:apply1(eq1 , itodifvar1),   
+    [_a, _b]: getDriftDiff(eq1, dt, dw),
+    "print (_a)",
+    return (_a)
+)$
+
+stDBSubstEq(Y, p, x, t, w):=block( [ eq1, nv, vars, dt:%DiffVars[t], dw:%DiffVars[w], _a, _b  ] ,
+    if opEqp(Y) then nv:part(Y,2) else nv:Y,
+    [_a, _b ]: getDriftDiff(Y, dt, dw),  
+    _b:%i*_b,
+    _a:DriftTransform(Y, p, x, t, w),
+    print ("corrected drift: ", _a, "corrected diffusion: ", _b),
+    vars:[x, t, w],
+    if not emptyp(listofvars(_a)) then
+        eq1: ItoSubstFull(Y, _a, vars, [w,t])
+    else
+        eq1: ItoSubstFull(Y, _a, _a, [w,t]),
+    "print (nv, eq1)",
+    eq1: subst(nv, Diff(x), eq1),
+    eq1: simpmult(eq1),
+    "print (eq1)",
+    eq1:apply1(eq1 , itodifvar1),   
+    [_a, _b]: getDriftDiff(eq1, dt, dw),
+    "print (_a)",
+    return (_a)
+)$
+
+DriftTransform(X, p, x, t, w) := block (
+[p1:[],  _a, _b, corr, ret, dt:%DiffVars[t], dw:%DiffVars[w] ],
+    if freeof(x, X ) then return (false),
+    declare(x, real),
+    [_a,_b]:getDriftDiff(X, dt, dw),
+    print("drift: ",_a, "  diffusion: " ,_b),
+    if not (_a and _b) then return (false), 
+    "corr:-_a + 1/p*diff(p, x,1)",
+    "derrivative corrections: : _a - 1/p*diff( 1/(_b)^2*p, x,1)",
+    corr:_a - 1/p*diff( (_b)^2*p, x,1),
+    corr: ratsimp(corr),
+    /*print ("drift correction: ", corr),   */
+    ret: trigrat(corr),
+    ret: trigreduce(ret)
+)$
+
+/* constructs a SDE based on an equation  x=f( t,w)
+*/
+consSDEq2(eq, t, w ):= block ([ sol, aux, ov, nv, seq, dx, p2,  dt:%DiffVars[t], dw:%DiffVars[w], _a, _b],
+    if not opEqp(eq) then return (false),
+    dx:apply1(Diff(part(eq,1)), itodifvar1) ,
+    p2: part(eq,2),
+    sol:solve(eq, w),
+    if length(sol)>0 then (
+        if length(sol)>1 then aux:second(sol) else aux:first(sol)
+    ) else (
+        sol:solve(eq, t),
+        if length(sol)>1 then aux:second(sol) else aux:first(sol)
+    ),
+    "print(length(sol), sol, aux)",
+    aux:ratsimp(aux),   
+    nv: part(aux, 2),
+    ov: part(aux, 1),
+    "print(ov, nv)",
+    seq:ItoDiff(p2, t, w),
+    seq:ItoDIsimp(seq),
+    "print(seq)",
+    seq:subst(nv,ov, seq),
+    seq:radcan(seq),
+    seq:apply1(seq, itodifvar1),
+    "print(seq)",
+    [ _a, _b ]: getDriftDiff(seq, dt, dw),
+    return (dx=_a*dt+_b*dw)
+)$
+
+/*
+* Ito-Stratonovich correction
+*/
+ItoTransform(X, alpha, x, t, w):= block(
+[p1:[],  _a,_b, corr, ret, dt:%DiffVars[t], dw:%DiffVars[w] ],
+  if freeof(x, X ) then return (false),
+  if opEqp(X) then (
+    p2:part(X,2), 
+    p1:part(X,1) )
+  else (
+    p2:X, 
+    p1:Diff(x)
+   ),
+  [_a,_b]:getDriftDiff(X, dt, dw),
+  print("drift: ",_a, "  diffusion: " ,_b),
+  if not (_a and _b) then return (false),
+    
+  corr: alpha*_b*diff(_b,x,1) *dt,   
+  print ("drift correction: ", corr),  
+  p2: expand(p2),
+  ret: expand(p2-corr),
+  p1:apply1 (p1, itodifvar),
+  return (p1=ret)
+)$
+
+
+
+/* private function for 
+*/ 
+get_abcd (X, x, t, w):=block ( [ ret:[], p2, s, %A, %R, dt:%DiffVars[t], dw:%DiffVars[w], _a, _b],
+  if not opEqp(X) then return (false),
+  p2:part(X,2),
+  [_a, _b ]: getDriftDiff(p2, dt, dw),  
+  matchdeclare ( [ %A, %R ], freeof(x), x, atom),
+  defmatch (xlinearp,  %A*x + %R, x), 
+  
+  s:xlinearp(_b, x), 
+  print(s),
+  ret: cons([%A,%R], ret),
+  if s=false then return (false),
+  s:xlinearp(_a, x), 
+  print(s),
+  if s=false then return (false),
+  ret: cons([%A,%R], ret)
+)$
+
+lSD_sol (X, x, t, w, t0, x0):=block (
+[ lst, _a:0, _b:0, _g:0, _d:0, dt:%DiffVars[t], dw:%DiffVars[w] , wi ],
+    lst:get_abcd (X, x, t, w),
+    if (lst#false) then (
+         _a : first(first(lst)),
+         _g : second(first(lst)),
+         _b : first(second(lst)),
+         _d : second(second(lst))
+    ),
+    /*
+    wi: ItoInt(_b*dw, t, w),
+    fs: 'integrate(_a-1/2*_b^2, t, t0, t) + wi,
+    wi: ItoInt(_d/fs*dw, t, w),
+    sol:fs*(x0 + 'integrate( (_g- _b*_d )/fs, t, t0, t) + wi)
+    */
+    wi: Int(_b*dw),
+    fs: 'integrate(_a-1/2*_b^2, t, t0, t) + wi,
+    wi: Int(_d/fs*dw),
+    sol:fs*(x0 + Int( (_g- _b*_d )/fs*dt) + wi)
+)$
+ 
+
+rSD_sol (X, x, t, w, t0, x0):=block (
+[ sol, _a:0, _b:0, dt:%DiffVars[t], dw:%DiffVars[w] , h, alpha, beta, rs, ret, wi  ],
+    if not opEqp(X) then return (false),
+    p2:part(X,2),
+   [_a, _b ]: getDriftDiff(p2, dt, dw),  
+   h: integrate(1/_b, x),  
+   rs: alpha*_b*h+1/2*_b*ratsimp(diff(_b, x, 1))=_a ,
+   sol:solve(rs, alpha),
+   if length(sol)>1 then alpha:second(sol) else alpha:first(sol),
+   print(alpha),
+   beta : alpha*h,
+   if freeof(x, alpha) then (
+    if alpha=0 then (
+        sol: subst(x=x0, h)+ w,
+        ret: ratsimp(solve(sol,x))
+        )
+    else ( 
+        wi: Int(exp(-alpha*t)*dt),
+        sol :exp(alpha*t)*subst(x = x0, h)+exp(alpha*t)*wi,
+        rs: solve(h, x),
+        ret: subst(sol, x, rs)
+    ),
+    return (ret)
+   ) ,
+    if freeof(x, beta) then (
+        sol:solve(h = beta*t+w+subst(x = x0 ,h) , x),
+        ret:ratsimp(sol)
+    )
+    else return (false),
+     
+    return (ret)
+)$
+ 
+ /*
+stochastic[reducible]:=proc(a::algebraic,b::algebraic)
+ local beta,temp1,h,temp3,alpha,soln,soln1,II;
+    h := int(1/b,x);
+    temp1 := alpha*b*h+1/2*b*simplify(diff(b,x));
+    temp1 = a;
+    alpha := simplify(solve(%,alpha));
+    beta := alpha*h;
+    if diff(alpha,x) = 0 then
+    if alpha=0 then
+        soln:=h=subs(x=X[0],h)+W;
+        X[t]=simplify(solve(soln,x));
+        else
+        soln1 := h = exp(alpha*t)*subs(x = X[0],h)+exp(alpha*t)*II;
+        X[t] = subs(II=Int(exp(-alpha*s),W=0..t),solve(soln1,x));
+        fi
+    elif diff(beta,x) = 0 then
+    X[t]=simplify(solve(h = beta*t+W+subs(x = X[0],h),x));
+    else ERROR(`non-linearsde SDE not reducible`)
+    fi
+end:
+*/
+
+put('sdeapp, 1.0, 'version);
+put('sdeapp, "Dimiter Prodanov", 'author);
+put('sdeapp, "(C) - Dimiter Prodanov, 2014", 'copyright);
