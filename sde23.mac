@@ -3,7 +3,7 @@
  * 
  * (C) Dimiter Prodanov
  *
- * @version 2.3 Date 08 Apr 2014
+ * @version 2.3.2 Date 17 Apr 2014
  *
  * @author Dimiter Prodanov
  *        IMEC
@@ -13,7 +13,7 @@
  * Andrey Zorin's SDE Maxima package.
  *
  *  The library is based on  the concepts presented in the paper
- * On Ito’s formula for multidimensional Brownian motion.  Hans Follmer and Philip,  Protter,  Probab. Theory Relat. Fields 116, 1–20 (2000)
+ * On Ito’s formula for multidimensional Brownian motion.  Hans Follmer and Philip  Protter,  Probab. Theory Relat. Fields 116, 1–20 (2000)
  * 
  * @license This library is free software; you can redistribute it and/or
  *      modify it under the terms of the GNU Lesser General Public
@@ -30,35 +30,20 @@
  *      Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-("general configuration",
-noundisp: true,
-solveradcan:true,
-solvetrigwarn:false,
-%emode : false,
-letrat: true,
-triginverses:all
+(	"general configuration",
+	noundisp: true,
+	solveradcan:true,
+	solvetrigwarn:false,
+	%emode : false,
+	letrat: true,
+	triginverses:all
 )$
 
-sdetrigsimp():= block([x, %k ],
-	errcatch(  
-    "handy simplifications",
-    matchdeclare(x, true, %k, true),
-    tellsimpafter(%k/sec(x), %k*cos(x)), 
-    tellsimpafter(%k/cos(x), %k*sec(x)), 
-    tellsimpafter(%k/csc(x), %k*sin(x)), 
-    tellsimpafter(%k/sin(x), %k*csc(x)), 
-    tellsimpafter(%k/tan(x), %k*cot(x)), 
-    tellsimpafter(%k/cot(x), %k*tan(x)), 
-    tellsimpafter(%k*cos(x)*sec(x), %k), 
-    tellsimpafter(%k*tan(x)*atan(x), %k), 
-	tellsimpafter(%k*sec(x)*sin(x), %k*tan(x)),
-	tellsimpafter(%k*csc(x)*cos(x), %k*cot(x)),
-    tellsimpafter(sin(x)^2+cos(x)^2, 1)
-    )
-)$
+
 
 if get('sde2,'version)=false then ( 
-	load("dist.lisp")
+    load("dist.lisp"),
+    if get('utils,'version)=false then load("util.mac")
  )$
  
 sdeinfo([_package]):=(
@@ -67,7 +52,7 @@ sdeinfo([_package]):=(
     disp("author: Dimiter Prodanov"),
     disp("license: LGPL"),
     disp("Recommended location: share/contrib"),
-    disp("last update: 25 Mar, 2014")
+    disp("last update: 19 Apr 2014")
 )$
 
 declare(random, feature)$
@@ -126,8 +111,6 @@ sde_reset():=block(
 declare (Int, linear)$ 
 " Differentiator operator",
 declare (Diff, linear)$ 
-" Expectation operator",
-declare (EE, linear)$
 
 /*
  Simplest properties of Ito Integral and Ito Differential:  distributivity
@@ -135,7 +118,7 @@ declare (EE, linear)$
 */
 declare_distributes_over (Int, ["[", "="])$
 declare_distributes_over (Diff, ["[", "="])$
-declare_distributes_over (EE, ["[", "=", 'integrate, Int])$
+
 
 print("rules Int-Diff")$
 
@@ -145,14 +128,14 @@ matchdeclare(sdx, true),
     defrule(itodifint, Diff(Int(sdx)), sdx)
 )$
 
-print("rules for differentials")$
+print("Structral Differntial and Integral rules")$
  
-/*******************************
-*        Differntial rules
-****************************/   
+/*****************************************
+*       Structral Differntial and Integral rules
+*****************************************/   
 (matchdeclare(dvar, cdiffp, cvar, regvarp),
-	defrule(itodifvar, Diff(dvar), 0),
-	defrule(itodifvar3, cvar, %DiffVars[cvar]),
+    defrule(itodifvar, Diff(dvar), 0),
+    defrule(itodifvar3, cvar, %DiffVars[cvar]),
     defrule(itodifvar2, Diff(cvar), %DiffVars[cvar]),
     defrule(itointvar,  Int(dvar), %IntVars[dvar]), 
     defrule(itointvar2, dvar, %IntVars[dvar]),  
@@ -166,23 +149,25 @@ defrule(itodifc,  Diff(1), 0)$
 ("Fundamental differential rule and product expansion",
 matchdeclare (V, opDiffp,  F, true, t, true, w, randomp),
     defrule (itogen_full, Diff(F), qvE( F, [t, w])),
-    defrule (itoprodexpand, V, ItoProd(V))
+    defrule (itoprodexpand, V, ItoProd(V)),
+    
+    ItoProd(V):=block([ x:0, y:0, ret:false, s ] ,
+      if not opDiffp(V) then return(ret), 
+      s:inpart(V,1), 
+      if not isOp(s,"*") or length(s)>2 then return(V), 
+      x: inpart(s,1), 
+      y: inpart(s,2), 
+      ret:Diff(x)*y+ x*Diff(y) + QV(Diff(x), Diff(y)),
+      return (ret)
+    )
  )$
 
-ItoProd(V):=block([ x:0, y:0, ret:false, s ] ,
-  if not opDiffp(V) then return(ret), 
-  s:inpart(V,1), 
-  if not isOp(s,"*") or length(s)>2 then return(V), 
-  x: inpart(s,1), 
-  y: inpart(s,2), 
-  ret:Diff(x)*y+ x*Diff(y) + QV(Diff(x), Diff(y)),
-  return (ret)
-)$
+
 
 /****
 * Fundamental differntaiting function
 ***/
-qvE(F, x ):= block ( [s, ss:0, i, j, n ],   
+qvE(F, x ):= block( [s, ss:0, i, j, n ],   
     if atom(x) then x:[x],
     n:length(x),
     s:sum(diff(F, x[i], 1)*Diff(x[i]), i, 1, n),
@@ -197,49 +182,47 @@ qvE(F, x ):= block ( [s, ss:0, i, j, n ],
 /****
 * Fundamental integration by part function
 ***/
-qvI(F, z, x ):= block ( [s:0, ss:0, i, j, n, q, Fa ],   
+qvEI(F, z, x ):= block( [s:0, ss:0, i, j, n, q, Fa ],   
     if atom(x) then x:[x],
     n:length(x),
-	Fa:'integrate (F,z),
-	for i:1 thru n do (
-		if z# x[ i] then s: s +diff(Fa, x[i], 1)*Diff(x[i])
-  	),
+    Fa:'integrate (F,z),
+    for i:1 thru n do (
+        if z# x[ i] then s: s +diff(Fa, x[i], 1)*Diff(x[i])
+    ),
     s:apply1(s,itodifvar2),
 
     for i:1 thru n do
         for j:1 thru n do
             ss:ss+ 1/2*diff(Fa, x[i], 1, x[j], 1)* QV(Diff(x[i]), Diff(x[j])),       
     ss: apply1(ss, itodifvar2), 
-	ss: apply1(Int(ss), itointvar),
-	s : apply1(Int(s), itointvar),
-	Fa:ev (Fa, nouns),
-	if verbose then (
-		q:diff(Fa, z, 1)*Diff(z),
-		q:apply1(q,itodifvar2),
-		return (Int (q)=Fa -s - ss)
-	) else
-		return (Fa -s - ss)
+    ss: apply1(Int(ss), itointvar),
+    s : apply1(Int(s), itointvar),
+    Fa:ev (Fa, nouns),
+    if verbose then (
+        q:diff(Fa, z, 1)*Diff(z),
+        q:apply1(q,itodifvar2),
+        return (Int (q)=Fa -s - ss)
+    ) else
+        return (Fa -s - ss)
 )$
 
 
 (" product simplification",
-	matchdeclare (V,  lambda([x], not atom(x)) ),
-	defrule(itoprodsimp, V,  simpmult2(V))
-)$
-
-simpmult2(V):=block( [ ret, sop:op(V), X],
-   if symbolp(sop) then (
-		V:first(inargsa(V)),
-		X: simpmult(V), 
-	ret: sop(X)
+    matchdeclare (V,  lambda([x], not atom(x)) ),
+    defrule(itoprodsimp, V,  simpmult2(V)),
+	
+	simpmult2(V):=block( [ ret, sop:op(V), X],
+	   if symbolp(sop) then (
+			V:first(inargsa(V)),
+			X: simpmult(V), 
+			ret: sop(X)
+	   )
+	   else 
+		ret: simpmult(V),
+		ret:apply1(ret, itointvar),
+		ret
 	)
-   else 
-	ret: simpmult(V),
-	ret:apply1(ret, itointvar),
-	ret
 )$
-
-
 
 
 /*******************************
@@ -247,16 +230,16 @@ simpmult2(V):=block( [ ret, sop:op(V), X],
 ****************************/     
 ItoDiff(expr, t, w):=block([ ret:false, p1, p2, comp:false, dt:%DiffVars[t], dw:%DiffVars[w] ],
     if atom(expr) then return (apply1(Diff(expr), itodifvar2, itodifc)),
-    if opDiffp(expr) then ret:expr else ret:Diff(expr),   
     if opIntp(expr) then return (apply1 (ret, itodifint)),
-  
+    if opDiffp(expr) then ret:expr else ret:Diff(expr),  
+	ret: apply1(ret, itodifint),
+	
     if opEqp(expr) then (
         comp:true,
         p1:part(ret,1),
-		p1:apply1 (p1, itodifint),
         ret:part(ret, 2)
     ), 
-    ret: apply1(ret, itodifint,   itogen_full),
+    ret: apply1(ret, itogen_full),
     ret: ev(ret, diff),
     "ret: apply1(ret, itodiffint2)",
     ret: simpmult(ret),
@@ -308,7 +291,6 @@ ItoDiffExpand(F, s):=block([ _u, _f, ret:false, _z, x, k, sop, sargs ] ,
 
 if sdebug then print("rules for integrals")$
 
-
 /*******************************
 *       Integral Simplification rules
 ***************************/
@@ -321,103 +303,142 @@ matchdeclare(V,  lambda ([u], any(maplist(randomp, inargsa(u))) and (freeof(%dt,
 matchdeclare(f,  lambda([u], not(any(maplist(randomp, inargsa(u)))) and freeof(%t, u) and freeof(%t, dz) and not diffp(u)), dz, martrand ),
     defrule (itolin, Int(f*dz), f*Int(dz))  
 )$
+
 ( "Simplification rule for drift integrals  f (t) *dt",
-matchdeclare(V,  lambda ([u],  is(freeof(w, u) and freeof(dw, u) )), %dt, diffp, %t, true,  w, randomp, dw, martp),
+matchdeclare(V,  lambda ([u],  is(freeof(w, u) and freeof(dw, u) )), %dt, diffp, %t, true,  w, randomp, dw, martp, f, true ),
     defrule (itolntsimp, Int(V), integrate(V/%dt, %t))
 )$
 
 
-(matchdeclare ( y, true, V, difintsimp2p),
-    defrule(itodiffint2, V, intsimp3(V, y, false))
+(   "derivatve of  Int ",
+    matchdeclare ( y, true, V, difintsimp2p),
+    defrule(itodiffint2, V, intsimp3(V, y, false)),
+     
+    difintsimp2p (V):= block( [ %a, dy, y, s:inargsa(V) ] ,
+
+        if length(s) <2 then return (false),
+            y: second (s),      
+        "print (y, V)",
+        dy:%DiffVars [y],
+        matchdeclare( %a, freeof (dy), dy, diffvarmatchp(y) ),
+        defmatch (dintv, 'diff(Int(%a*dy), y, 1), y, dy ),
+        if (dintv(V, y, dy)#false) then return (true),
+        return (false)
+    ),
+
+    intsimp3(V, y, dflag):=block([ ret:0, %a, dy:%DiffVars [y], s ] , 
+      "print(V)",
+      s: dintv(V, y, dy),
+      if (s#false) then ret:%a 
+      else return (V),
+      if dflag then ret:ret/dy,
+      return (ret)
+    )
 )$
 
-difintsimp2p (V):= block( [ %a, dy, y, s:inargsa(V) ] ,
-	/*vl:listofvars(V)
-	for x in vl do (     
-        if (distprodp(V, x)#false) then return (y:x)
-	),
-	 */
-	if length(s) <2 then return (false),
-		y: second (s), 		
-    "print (y, V)",
-    dy:%DiffVars [y],
-    matchdeclare( %a, freeof (dy), dy, diffvarmatchp(y) ),
-    defmatch (dintv, 'diff(Int(%a*dy), y, 1), y, dy ),
-    if (dintv(V, y, dy)#false) then return (true),
-    return (false)
-)$
-
-intsimp3(V, y, dflag):=block([ ret:0, %a, dy:%DiffVars [y], s ] , 
-  "print(V)",
-  s: dintv(V, y, dy),
-  if (s#false) then ret:%a 
-  else return (V),
-  if dflag then ret:ret/dy,
-  return (ret)
-)$
-
-( "integral-differntial simplifications",
-matchdeclare(V, true, x, atom, n, atom),
-    defrule (itolntsubt1, Int(V), intsimp1 (V)), " ordinary integral of Wiener variable",
-	defrule (itolntsubt2, 'diff(Int(V), x, n), intsimp2('diff(Int(V), x, n)))
-)$
-
-intsimp1(V):= block( [vl :listofvars(V), s1, x, dx, %A, s] ,  
-    matchdeclare (%A, freeof(dx, %A),  dx, cdiffp), 
-    defmatch (stprodp,  %A*dx, dx),
-    for dx in vl do (
-        s: stprodp(V, dx),
-        "print (s)",
-        if (s#false) then (
-            x:apply1(dx, itointvar2),
-            s1: subst(w(x), w, %A),
-            if s# false then return (s1: 'integrate(s1, x))
-        )  
-    ),	
-    s1: ev(s1, diff, nouns),
- /*   s1: subst(w, w (x), s1), */
-    return (s1)
-  )$
- 
-intsimp2(V):= block( [vl:listofvars(V), y, ret, x, %B, %C, s, n] ,  
-    "print (vl)", 
-    matchdeclare (%B, true,  x, cdiffp, x, atom , n, atom), 
-    defmatch (distprodp,  'diff(%B, x, n), x),
+( 	"integral-differntial simplifications",
+	matchdeclare(V, true, x, atom, n, atom),
+    " ordinary integral of Wiener variable",
+    defrule (itolntsubst1, Int(V), intsimp1 (V)), 
     
-    matchdeclare(%C, true, dy, cdiffp ),
-    defmatch (dintv2, Int(%C*dy), dy ),
+    intsimp1(V):= block( [vl :listofvars(V), s1, x, dx, %A, s] ,  
+        matchdeclare (%A, freeof(dx, %A),  dx, cdiffp), 
+        defmatch (stprodp,  %A*dx, dx),
+        for dx in vl do (
+            s: stprodp(V, dx),
+            "print (s)",
+            if (s#false) then (
+                x:apply1(dx, itointvar2),
+                s1: subst(w(x), w, %A),
+                if s# false then return (s1: 'integrate(s1, x))
+            )  
+        ),  
+        s1: ev(s1, diff, nouns),
+     /*   s1: subst(w, w (x), s1), */
+        return (s1)
+     ),
     
-    for x in vl do (     
-        if (distprodp(V, x)#false) then (
-			"print (x,  %B)",
-            for y in vl do (
-                if not cdiffp(y) then (
-                    dy:%DiffVars[y],
-                    "print (y, x, dy)",                    
-                    if (s:dintv2(%B, dy))#false then (
-                        "print (y, s, %B)",
-                        return (return(ret:'diff (%C*dy, x, n)))
+    " ordinary differential of Int ",
+    defrule (itolntsubst2, 'diff(Int(V), x, n), intsimp2('diff(Int(V), x, n))),
+    
+    intsimp2(V):= block( [vl:listofvars(V), y, ret, x, %B, %C, s, n] ,  
+        "print (vl)", 
+        matchdeclare (%B, true,  x, cdiffp, x, atom , n, atom), 
+        defmatch (distprodp,  'diff(%B, x, n), x),
+        
+        matchdeclare(%C, true, dy, cdiffp ),
+        defmatch (dintv2, Int(%C*dy), dy ),
+    
+        for x in vl do (     
+            if (distprodp(V, x)#false) then (
+                "print (x,  %B)",
+                for y in vl do (
+                    if not cdiffp(y) then (
+                        dy:%DiffVars[y],
+                        "print (y, x, dy)",                    
+                        if (s:dintv2(%B, dy))#false then (
+                            "print (y, s, %B)",
+                            return (return(ret:'diff (%C*dy, x, n)))
+                        )
                     )
                 )
-            )
-        )  
-    ),
-	ret:ev(Int(ret), diff),
-	return (ret)
+            )  
+        ),
+        ret:ev(Int(ret), diff),
+        return (ret)
+    )
+    
 )$
+
+
   
 /* Differential expression simplfication
 */  
 ItoDIsimp (expr) := block ( [ ret ],
-	ret:apply1(expr, itodiffint2, itolntsubt2, itolntsimp, itolin),
-	ret:ev(ret, nouns)
+    ret:apply1(expr, itodiffint2, itolntsubst2, itolntsimp, itolin),
+    ret:ev(ret, nouns)
 )$
 
-( "integral-differntial simplifications; TODO",
-matchdeclare(V, true, x, atom, n, integerp, dx, cdiffp),
-	defrule(itolntsubt3, dx*diff(Int(V), x, n), Int (dx* diff(V,x, n) ) ),
-	"let(dx*diff(Int(V), x, n), Int (dx* diff(V,x, n) ) )"
+
+ItoDIrev(expr) := block ( [ ret ],
+    ret:apply1(expr, itolntsubst3, itolntsubst4),
+    ret:ev(ret, nouns)
 )$
+
+( "integral-differntial simplifications",
+matchdeclare(V, true, x, atom , n, atom, dx, cdiffp  ),
+    defrule(itolntsubst3, dx*'diff(Int(V), x, n), intsimp5(dx*diff(Int(V), x, n)) ),
+    defrule(itolntsubst4, dx*'diff(Int(V), x, n)/2, intsimp5(dx* diff(Int(V), x, n) /2 )),
+    
+    intsimp5(V):=block( [ vl:listofdiffvars(V), %A, %C, dx, x, n:1, s, ret:false, p1 ],
+        "print (V )",
+        matchdeclare (%A, true, dx, cdiffp, [ x, n ], atom), 
+        defmatch (diffintprodp,  dx*'diff(Int(%A) , x, n), dx),
+         
+        "print (vl)",
+        for dx in vl do (        
+            s:diffintprodp(V, dx),
+            "print (dx, s)",
+            if s#false then 
+                ret:Int(dx* 'diff(%A, x, n))
+            else (
+                if opDp(V) then (
+                    p1: part(V,1),
+                    %C:part(V,2),
+                    s:diffintprodp(p1, dx),
+                    "print (dx, %C , s)",
+                    if s#false then 
+                        ret:Int(dx* 'diff(%A, x, n)/%C )
+                )
+                
+            ),
+            "print (dx, s, ret)",
+        if ret#false then return (ret)
+        ),
+        return(ret)
+    )
+)$
+
 
 /*******************************
 *        Integral rules
@@ -429,58 +450,61 @@ matchdeclare (X, true, Y, true, V, true, dy, cdiffp),
  )$
 
 ItoProd3(X,Y):=block([ret],
-	ret: X*Y - Int( Y*Diff(X) ) - Int( QV(Diff(X), Diff(Y)) ),
-	ret:apply1(ret, itogen_full),
-	return (ret)
+    ret: X*Y - Int( Y*Diff(X) ) - Int( QV(Diff(X), Diff(Y)) ),
+    ret:apply1(ret, itogen_full),
+    return (ret)
 )$
  
 ItoProd2(V):=block([  y:0,   ret:false, %x, dy, dv ] ,
-	dv: getDiffVars(V),
-	"print(dv)",
-	if length(dv)=0 or length(dv) >1 then return (false),	
+    dv: getDiffVars(V),
+    "print(dv)",
+    if length(dv)=0 or length(dv) >1 then return (false),   
     matchdeclare(%x , true ,  dy,  cdiffp),
     defmatch (diffmatchp,  %x*dy, dy),
-	dy: first(dv),
+    dy: first(dv),
     diffmatchp(V, dy),
-	"print(%x)",
+    "print(%x)",
     y: apply1( dy,  itointvar2),
     ret:%x*y - Int( y*Diff(%x) ) - Int( QV(Diff(%x), Diff(y)) ),
-	/*print("rule 1 ", ret), */
+    /*print("rule 1 ", ret), */
     ret: apply1(ret, itogen_full),
-	/* print("rule 2 " ,ret), */
-	 ret: apply1(ret, itoprodsimp),
-	/* print("rule 3 ", ret), */
-	ret:apply1(ret, itodifc, itodifvar, itolntsimp  ),
+    /* print("rule 2 " ,ret), */
+     ret: apply1(ret, itoprodsimp),
+    /* print("rule 3 ", ret), */
+    ret:apply1(ret, itodifc, itodifvar, itolntsimp  ),
     return (ret)
 )$
 
 
 getDiffVars(V):= block ( [ vv, dvars:[], i, v ] ,
-	vv: apply1(V, itodifvar2),
-	vv:listofvars(vv), 
-	"print (vv)",
-	if length(vv)=0 then return (false),
-	n:length(vv),
-	for i:1 thru n do
-		if cdiffp(vv[i]) then dvars:cons( vv[i], dvars),	
-	dvars
+    vv: apply1(V, itodifvar2),
+    vv:listofvars(vv), 
+    "print (vv)",
+    if length(vv)=0 then return (false),
+    n:length(vv),
+    for i:1 thru n do
+        if cdiffp(vv[i]) then dvars:cons( vv[i], dvars),    
+    dvars
 )$
 
 ("Integration by parts rule",
 matchdeclare (V,  freeof(w, V), dw, martp, w,  randomp),
     defrule (itopart,  Int(V), parse_larg(Int(V), dw)*w - Int(w*'diff(parse_larg(Int(V),dw),%t)*%dt )),
-    defrule (itopart1, Int(V), parse_larg(Int(V), dw)*w - Int(w*diff(parse_larg(Int(V),dw),%t)*%dt ))
+    defrule (itopart1, Int(V), parse_larg(Int(V), dw)*w - Int(w*diff(parse_larg(Int(V),dw),%t)*%dt )),
+	
+	parse_larg(V, dw):=block([ %a:0, ret:false, s ] ,
+	  if not opIntp(V) then return(ret),
+	  matchdeclare (%a,  freeof(%a, V)), 
+	  defmatch (prodpw,  %a*dw, dw), 
+	  s:inpart (V,1), 
+	  prodpw(s ,dw),  
+	  if freeof(dw, %a) then ret:%a else ret:0,
+	  return (ret)
+	)
+	
 )$
 
-parse_larg(V, dw):=block([ %a:0, ret:false, s ] ,
-  if not opIntp(V) then return(ret),
-  matchdeclare (%a,  freeof(%a, V)), 
-  defmatch (prodpw,  %a*dw, dw), 
-  s:inpart (V,1), 
-  prodpw(s ,dw),  
-  if freeof(dw, %a) then ret:%a else ret:0,
-  return (ret)
-)$
+
 
 if sdebug then print(" functions")$
 
@@ -501,10 +525,10 @@ ItoSubst(X, F, x, t):=block(
       
     if opEqp(F) then (           
         p2:solve(F,x),
-		"print(p2)",
+        "print(p2)",
         if emptyp(p2) then p2:solve(F2,w),
         if not emptyp(p2) then (
-			if length(p2)>1 then p2:second(p2) else p2:first(p2),    
+            if length(p2)>1 then p2:second(p2) else p2:first(p2),    
             ov:part(p2,1), nv:part(p2,2),  
             ret:subst(nv,ov, ret)       
             /*print(dF, " ",p2, " ",ov, " ", nv)*/
@@ -551,112 +575,8 @@ ItoSubstFull(X, F, x, vars ):=block([ret:X, p1, p2, FF:F, ov, nv ] ,
   return(p1=ret)
 )$
 
-DriftTransform(X, p, x, t, w) := block (
-[p1:[],  _a, _b, corr, ret, dt:%DiffVars[t], dw:%DiffVars[w] ],
-	if freeof(x, X ) then return (false),
-	declare(x, real),
-	[_a,_b]:getDriftDiff(X, dt, dw),
-	print("drift: ",_a, "  diffusion: " ,_b),
-	if not (_a and _b) then return (false), 
-	"corr:-_a + 1/p*diff(p, x,1)",
-	"derrivative corrections: : _a - 1/p*diff( 1/(_b)^2*p, x,1)",
-	corr:_a - 1/p*diff( (_b)^2*p, x,1),
-	corr: ratsimp(corr),
-	/*print ("drift correction: ", corr),  	*/
-	ret: trigrat(corr),
-	ret: trigreduce(ret)
-)$
 
-/*
-* Ito-Stratonovich correction
-*/
-ItoTransform(X, alpha, x, t, w):= block(
-[p1:[],  _a,_b, corr, ret, dt:%DiffVars[t], dw:%DiffVars[w] ],
-  if freeof(x, X ) then return (false),
-  if opEqp(X) then (
-    p2:part(X,2), 
-    p1:part(X,1) )
-  else (
-    p2:X, 
-    p1:Diff(x)
-   ),
-  [_a,_b]:getDriftDiff(X, dt, dw),
-  print("drift: ",_a, "  diffusion: " ,_b),
-  if not (_a and _b) then return (false),
-    
-  corr: alpha*_b*diff(_b,x,1) *dt,   
-  print ("drift correction: ", corr),  
-  p2: expand(p2),
-  ret: expand(p2-corr),
-  p1:apply1 (p1, itodifvar),
-  return (p1=ret)
-)$
 
-/* 
-*  Constructs the forward Kolmogorov equation of the Ito process - 1D
-*/
-KolmFEq(X, x, t, w ):=block(
-[ a:0, b:0, eq, eq2, dt:%DiffVars[t], dw:%DiffVars[w] ] ,   
-    [a,b]:getDriftDiff(X, dt, dw),
-    print(" drift: ",a, "  diffusion: " ,b),
-    if not (a and b) then return (false), 
-    eq: diff(p(x,t),t)=-diff(a*p(x,t),x)+1/2*diff(b^2*p(x,t),x,2),
-    eq2: diff(b^2*p(x),x,1)=2*a*p(x),
-    return ([eq, eq2])
-)$
-
-/* 
-*  Constructs the backward Kolmogorov equation of the Ito process - 1D
-*/
-KolmBEq(X, x, t, w ):=block(
-[ a:0, b:0, eq, eq2, dt:%DiffVars[t], dw:%DiffVars[w] ] ,   
-    [a,b]:getDriftDiff(X, dt, dw),
-    print(" drift: ",a, "  diffusion: " ,b),
-    if not (a and b) then return (false), 
-    eq: diff(u(x,t),t)=-a*diff(u(x,t),x)-b^2/2*diff(u(x,t),x,2),
-    eq2: +a*diff(u(x,t),x)+b^2/2*diff(u(x,t),x,2)=0,
-    return ([eq, eq2])
-)$
-
-/*******************
-*  Constructs the forward Kolmogorov equation of the Ito process -ND
-*******************/
-KolmFEqN(a, b, x, t ):=block([eq, s, b2, ss:0, i, j, n ] , 
-    if atom(x) then return (false),
-    if not listp(a) then return (false),
-    if not matrixp(b) then return (false),
-    if (length(x) # length(a)) or 
-    (length(a) # length(b)) or  
-    (length(x) # length(b)) then return (false),
-    n:length(x),    
-    s:sum(diff(a[i]*p(x,t), x[i], 1), i, 1, n),
-    b2: b.b,
-    for i:1 thru n do
-        for j:1 thru n do 
-            ss:ss+ 1/2*diff(b2[i,j]*p(x,t), x[i], 1, x[j], 1),                  
-    eq: 'diff(p(x,t),t)=-s +ss,
-    eq2: -s +ss=0,
-    return ([eq, eq2])
-)$
-
-/****************
-*
-*****************/
-KolmFEqSolp(X, p, t, w, trig ):=block(
-[ a:0, b:0, eq, eq2, dt:%DiffVars[t], dw:%DiffVars[w] ] ,   
-    [a,b]:getDriftDiff(X, dt, dw),   
-    if not (a and b) then return (false), 
-	print(" drift: ",a, "  diffusion: " ,b),
-    eq: diff(p,t)+diff(a*p,x)-1/2*diff(b^2*p,x,2)=0,
-    eq: ratsimp(eq),
-	if trig then eq: trigrat(eq),
-    eq2: diff(b^2*p,x,1)-2*a*p=0,
-    eq2: ratsimp(eq2),
-    if trig then eq2: trigrat(eq2),
-    return ([eq, eq2])
-)$
-
- 
 /* 
 * Splits an Ito differential into drift and diffusion terms
 * 1 time and 1 martingale variable
@@ -679,277 +599,38 @@ getDriftDiff(V, dt, dw):=block([ret:false, %A:0, %B:0, x:V ] ,
 * many variables
 */
 getDriftDiffFull(V, vars):=block([ret:[], s, %L, %R, x:V, dvars:[], i,n ] ,   
-	if not listp(vars) then return (false),
-	if opEqp(V) then x:part(V,2),  
-	n:length(vars),
-	for i:1 thru n do dvars:cons( %DiffVars [vars[i]], dvars),	 
-	if emptyp(dvars) then return (false),
+    if not listp(vars) then return (false),
+    if opEqp(V) then x:part(V,2),  
+    n:length(vars),
+    for i:1 thru n do dvars:cons( %DiffVars [vars[i]], dvars),   
+    if emptyp(dvars) then return (false),
     matchdeclare (%L, true, %R, true, dvars, lcdiffp, i, numberp),
     defmatch (stlinearfp, %R + %L*dvars[i], i, dvars), 
-	for i:1 thru n do (		
-		s:stlinearfp(x, i, dvars), 
-		"print(dvars[i], %L)",
-		if s#false then ret:cons(%L, ret)
-	),
+    for i:1 thru n do (     
+        s:stlinearfp(x, i, dvars), 
+        "print(dvars[i], %L)",
+        if s#false then ret:cons(%L, ret)
+    ),
     ret:ratexpand(ret),    
     return(ret)
 )$
  
 
-/*
-* ItoChk(X, xsol, t, dt, w, dw) checks if the expression xsol is a solution of the equation X
-*/
-ItoChk(X, xsol, t, w):=block([ ret, p1:xsol, p2, dx, eq, x, dt:%DiffVars [t], dw:%DiffVars [w] ] ,
-   if opEqp(X) then eq:part(X,2) else return(false),
-   if listp(xsol) then (
-     if emptyp(xsol) then return (false),
-     xsol:first(xsol)
-   ),
-   if opEqp(xsol) then (
-     x :part(xsol,1),
-     p1:part(xsol,2)
-   ), 
-   dx:ItoDiff(p1, t, w ),
-   dx:ItoDIsimp(dx),
-   "print (p1, dx)",
-   eq: subst(p1,x, eq), 
-   p2: eq=dx,
-   ret: [X, xsol, p2, is(p2) ],
-   return (ret)
-)$
-
-ItoSolve(X, xsol, t, w):=block( [ ret, a, b, dt:%DiffVars[t], dw:%DiffVars[w]] , 
-    ret:ItoChk(X, xsol, t, w),
-    ret:third(ret) ,
-    ret:ret-part(ret,1),
-    "print(ret)",
-    if is(ret) then return (ret) else
-    [a,b]:getDriftDiff(ret, dt, dw)
-)$
 
 consSDEq(a, b, x, t, w):=block([dx, dt:%DiffVars[t], dw:%DiffVars[w] , dwl]   ,
   if not listp(w) and not listp(b) then  (
-     	dx:regvar(x), "we create a differential variable",     
-     	return (dx=a*dt +b*dw)
+        dx:regvar(x), "we create a differential variable",     
+        return (dx=a*dt +b*dw)
      ),
-	if listp(w) and listp(b) and length (b)=length (w) then (
-		dx:regvar(x), "we create a differential variable",     
-		dwl:map(itodifvar3, w),
-     	return (dx=a*dt + b . dwl)
-		),
-	return (false)
+    if listp(w) and listp(b) and length (b)=length (w) then (
+        dx:regvar(x), "we create a differential variable",     
+        dwl:map(itodifvar3, w),
+        return (dx=a*dt + b . dwl)
+        ),
+    return (false)
 )$
 
-stDer(X, n, t, w) :=block( [i, dX, dt:%DiffVars[t], dw:%DiffVars[w], _a, _b  ], 
-    if (n <=0) then n:1,
-    for i:1 thru n do (
-        dX:ItoDiff(X, t,w),
-        dX:ItoDIsimp(dX),
-        "print (i, dX)",
-        if dX=0 then return (_a:0),  
-        [_a, _b]: getDriftDiff(dX, dt, dw),
-        X:_a
-    ),  
-	ItoDIsimp(_a),
-    return (_a)
-)$
 
-stDBer(X, p, n, t, w) :=block( [i, dX, x, dt:%DiffVars[t], dw:%DiffVars[w], _a, _b  ], 
-	if not opEqp(X) then return (false), 
-	x:part(X,1),
-    if (n <=0) then n:1,
-    for i:1 thru n do (
-        dX:ItoDiff(X, t,w),
-        dX:ItoDIsimp(dX),		
-        "print (i, dX)",
-        if dX=0 then return (_a:0),  
-		_a:DriftTransform(dX, p, x, t, w),
-        X:_a
-    ),  
-	ItoDIsimp(_a),
-    return (_a)
-)$
-
-stDcons(aa, bb, x, t, w):=block( [ X, eq1, dt:%DiffVars[t], dw:%DiffVars[w], _a, _b  ] ,
-    X:consSDEq(aa, bb, x, t, w),
-    "print (x)",
-	vars:[x, t, w],  
-    if not emptyp(listofvars(aa)) then
-        eq1: ItoSubstFull(X, aa, vars, [w,t])
-    else
-        eq1: ItoSubstFull(X, aa, aa, [w,t]),
-	nv:part(X,2),
-	"print (eq1)",
- 	eq1: subst(nv, Diff(x), eq1),
-	eq1: simpmult(eq1),	
-	eq1: apply1(eq1 , itodifvar1),	
-    [ _a, _b ]: getDriftDiff(eq1, dt, dw),
-    return (_a)
-)$
-
-stDSubstEq(Y, x, t, w):=block( [ eq1, nv, vars, dt:%DiffVars[t], dw:%DiffVars[w], _a, _b  ] ,
-	if opEqp(Y) then nv:part(Y,2) else nv:Y,
-    [_a, _b ]: getDriftDiff(Y, dt, dw),
-    print ("drift: ", _a, "  diffusion: ", _b),
-    vars:[x, t, w],
-    if not emptyp(listofvars(_a)) then
-        eq1: ItoSubstFull(Y, _a, vars, [w,t])
-    else
-        eq1: ItoSubstFull(Y, _a, _a, [w,t]),
-	"print (nv, eq1)",
- 	eq1: subst(nv, Diff(x), eq1),
-	eq1: simpmult(eq1),
-	"print (eq1)",
-	eq1:apply1(eq1 , itodifvar1),	
-    [_a, _b]: getDriftDiff(eq1, dt, dw),
-	"print (_a)",
-    return (_a)
-)$
-
-stDBSubstEq(Y, p, x, t, w):=block( [ eq1, nv, vars, dt:%DiffVars[t], dw:%DiffVars[w], _a, _b  ] ,
-	if opEqp(Y) then nv:part(Y,2) else nv:Y,
-    [_a, _b ]: getDriftDiff(Y, dt, dw),  
-	_b:%i*_b,
-	_a:DriftTransform(Y, p, x, t, w),
-	print ("corrected drift: ", _a, "corrected diffusion: ", _b),
-    vars:[x, t, w],
-    if not emptyp(listofvars(_a)) then
-        eq1: ItoSubstFull(Y, _a, vars, [w,t])
-    else
-        eq1: ItoSubstFull(Y, _a, _a, [w,t]),
-	"print (nv, eq1)",
- 	eq1: subst(nv, Diff(x), eq1),
-	eq1: simpmult(eq1),
-	"print (eq1)",
-	eq1:apply1(eq1 , itodifvar1),	
-    [_a, _b]: getDriftDiff(eq1, dt, dw),
-	"print (_a)",
-    return (_a)
-)$
-
-consSDEq2(eq, t, w ):= block ([ sol, aux, ov, nv, seq, dx, p2,  dt:%DiffVars[t], dw:%DiffVars[w], _a, _b],
-	if not opEqp(eq) then return (false),
-    dx:apply1(Diff(part(eq,1)), itodifvar1) ,
-	p2: part(eq,2),
-    sol:solve(eq, w),
-	if length(sol)>0 then (
-		if length(sol)>1 then aux:second(sol) else aux:first(sol)
-	) else (
-		sol:solve(eq, t),
-		if length(sol)>1 then aux:second(sol) else aux:first(sol)
-	),
-	"print(length(sol), sol, aux)",
-	aux:ratsimp(aux),	
-    nv: part(aux, 2),
-    ov: part(aux, 1),
-	"print(ov, nv)",
-    seq:ItoDiff(p2, t, w),
-	seq:ItoDIsimp(seq),
-	"print(seq)",
-    seq:subst(nv,ov, seq),
-	seq:radcan(seq),
-    seq:apply1(seq, itodifvar1),
-	"print(seq)",
-	[ _a, _b ]: getDriftDiff(seq, dt, dw),
-	return (dx=_a*dt+_b*dw)
-)$
-
-/* private function for 
-*/ 
-get_abcd (X, x, t, w):=block ( [ ret:[], p2, s, %A, %R, dt:%DiffVars[t], dw:%DiffVars[w], _a, _b],
-  if not opEqp(X) then return (false),
-  p2:part(X,2),
-  [_a, _b ]: getDriftDiff(p2, dt, dw),  
-  matchdeclare ( [ %A, %R ], freeof(x), x, atom),
-  defmatch (xlinearp,  %A*x + %R, x), 
-  
-  s:xlinearp(_b, x), 
-  print(s),
-  ret: cons([%A,%R], ret),
-  if s=false then return (false),
-  s:xlinearp(_a, x), 
-  print(s),
-  if s=false then return (false),
-  ret: cons([%A,%R], ret)
-)$
-
-lSD_sol (X, x, t, w, t0, x0):=block (
-[ lst, _a:0, _b:0, _g:0, _d:0, dt:%DiffVars[t], dw:%DiffVars[w] , wi ],
-	lst:get_abcd (X, x, t, w),
-	if (lst#false) then (
-		 _a : first(first(lst)),
-		 _g : second(first(lst)),
-		 _b : first(second(lst)),
-		 _d : second(second(lst))
-	),
-	/*
-	wi: ItoInt(_b*dw, t, w),
-	fs: 'integrate(_a-1/2*_b^2, t, t0, t) + wi,
-	wi: ItoInt(_d/fs*dw, t, w),
-	sol:fs*(x0 + 'integrate( (_g- _b*_d )/fs, t, t0, t) + wi)
-	*/
-	wi: Int(_b*dw),
-	fs: 'integrate(_a-1/2*_b^2, t, t0, t) + wi,
-	wi: Int(_d/fs*dw),
-	sol:fs*(x0 + Int( (_g- _b*_d )/fs*dt) + wi)
-)$
- 
-
-rSD_sol (X, x, t, w, t0, x0):=block (
-[ sol, _a:0, _b:0, dt:%DiffVars[t], dw:%DiffVars[w] , h, alpha, beta, rs, ret, wi  ],
-	if not opEqp(X) then return (false),
-	p2:part(X,2),
-   [_a, _b ]: getDriftDiff(p2, dt, dw),  
-   h: integrate(1/_b, x),  
-   rs: alpha*_b*h+1/2*_b*ratsimp(diff(_b, x, 1))=_a ,
-   sol:solve(rs, alpha),
-   if length(sol)>1 then alpha:second(sol) else alpha:first(sol),
-   print(alpha),
-   beta : alpha*h,
-   if freeof(x, alpha) then (
-	if alpha=0 then (
-		sol: subst(x=x0, h)+ w,
-	    ret: ratsimp(solve(sol,x))
-		)
-	else ( 
-		wi: Int(exp(-alpha*t)*dt),
-		sol :exp(alpha*t)*subst(x = x0, h)+exp(alpha*t)*wi,
-		rs: solve(h, x),
-		ret: subst(sol, x, rs)
-	),
-	return (ret)
-   ) ,
-	if freeof(x, beta) then (
-		sol:solve(h = beta*t+w+subst(x = x0 ,h) , x),
-		ret:ratsimp(sol)
-	)
-	else return (false),
-	 
-	return (ret)
-)$
- 
- /*
-stochastic[reducible]:=proc(a::algebraic,b::algebraic)
- local beta,temp1,h,temp3,alpha,soln,soln1,II;
-    h := int(1/b,x);
-    temp1 := alpha*b*h+1/2*b*simplify(diff(b,x));
-    temp1 = a;
-    alpha := simplify(solve(%,alpha));
-    beta := alpha*h;
-    if diff(alpha,x) = 0 then
-	if alpha=0 then
-	    soln:=h=subs(x=X[0],h)+W;
-	    X[t]=simplify(solve(soln,x));
-        else
-        soln1 := h = exp(alpha*t)*subs(x = X[0],h)+exp(alpha*t)*II;
-        X[t] = subs(II=Int(exp(-alpha*s),W=0..t),solve(soln1,x));
-        fi
-    elif diff(beta,x) = 0 then
-    X[t]=simplify(solve(h = beta*t+W+subs(x = X[0],h),x));
-    else ERROR(`non-linearsde SDE not reducible`)
-    fi
-end:
-*/
 
 if sdebug then print("rules for integrals 2")$
 /***********************
@@ -1030,7 +711,7 @@ intstab(expr, w) :=block([ret:false, stabfun, dw, sop, sargs, c:[1,0], p1, sop2,
                      p1:inargsa(sargs),
                      sop2:op(p1[1]),
                      op:concat(sop2,p1[2]),
-                     print (op, sargs)
+                     "print (op, sargs)"
                 )        
              )                        
         ),              
@@ -1054,7 +735,6 @@ intstab(expr, w) :=block([ret:false, stabfun, dw, sop, sargs, c:[1,0], p1, sop2,
             
     ), "end if non-const"
 )$
-
 
 
 /*******************************
@@ -1084,7 +764,7 @@ ItoInt(expr, t, w):=block([ret, p1, s1, s2, s3, saux, comp:false, _drift, _dif, 
         ret:part(ret,2)
     ),
     
-    [_drift, _dif] : getDriftDiff(ret, dt, dw),
+    [ _drift, _dif ] : getDriftDiff(ret, dt, dw),
     
     "we try to resolve separately",
     s1:_drift,
@@ -1119,58 +799,6 @@ ItoInt(expr, t, w):=block([ret, p1, s1, s2, s3, saux, comp:false, _drift, _dif, 
     if comp then ret:p1=ret,
     return(ret)
  )$
-
-/*******************************
-*        Expectation functions
-***************************/
-
-( "Expectation rules 1 ",
-matchdeclare(dw, martrand, w, randomp, %c, constantp , %t, true, V, lambda( [u], freeof(dw, u) and nrandomp(u) )  ),
-    defrule (ieec,  EE(%c), %c),
-    defrule (itoE1, EE(dw), 0),
-    defrule (itoE2, EE(w), 0),
-    defrule (itoE3, EE(w^2), %t),
-    defrule (itoE4, EE(V), V)
-)$
-
-( "Linearity rule",
-matchdeclare(f,  lambda([u], not(any(maplist(randomp, inargsa(u)))) and freeof(%t, u) and freeof(dw, u) and not diffp(u)), dw, martrand ),
-    defrule (itoElin, EE(f*dw), f*EE(dw))  
-)$
-
-( "Expectation rules 2",
-matchdeclare(f,  true, dw, martrand, %dt, diffp, V, lambda( [u], not freeof( dw, u) ) ),  
-    defrule (itoE5, Int(EE(V)), 0),
-    defrule (itoEIsom1, Int(EE(V)^2), Int(EE(splitBy1(V, dw)^2*%dt ) ) ) ,  
-    defrule (itoEIsom2, Int(EE(X*Y)), Int(EE(X)*EE(Y)*%dt ) )   
-)$
-
-/*
-* Expectation calculation
-*/
-ItoEE(X):=block( [p1, p2, ret ],
- ret:expand(X),
- ret:EE(ret),
- if opEqp(X) then (
-    p1:part(ret,1),
-    p2:part(ret,2)
-  ) else (
-    p1:EE, 
-    p2:ret
-  ),
-  p2:apply1(p2, itoEIsom1, itoEIsom2),
-    print ("s1 ", p2),
-	if not freeof(EE, p2) then (
-	  p2:apply1(p2, ieec, itoElin, itoE1, itoE2 , itoE3),
-	  if not freeof(EE, p2) then (
-		print ("s2 ", p2),
-		  p2:apply1(p2,  itoE4 , itoE5), 
-			print ("s3 ", p2)
-		)
-	),
-  ret:p1=p2,
-  return(ret)
-)$
 
 
 /*
@@ -1277,7 +905,6 @@ BrownSingle(_w, w0, t):= block([dw, dt,  b, rls],
     dw:regvar(_w), "we create a global differential martingale variable",
         "print (dw)",
     declare(dw, random,  dw, differential, dw, mart),
-    "declare(dw, random, dw, mart, dw, differential)",
     b: new (wiener(_w, dw, w0)),
     %CurrentDifferentials : cons(dw, %CurrentDifferentials),  
     AddQuadVar(dw, dt, 0),
@@ -1333,6 +960,8 @@ martp(_x) := featurep (_x, mart);
 */
 martrand(u):=ev(martp(u) and randomp(u));
 
+
+opDp(V):= isOp (V, "/")$
 /* 
 * returns true V contains is an Int operator
 */
@@ -1378,48 +1007,9 @@ splitByPow(V, t) := block( [ret,  %A:false, %N:0],
    return(ret)
 )$
 
-/*******************************
-*         Utility functions
-****************************/  
-/*
-cmult(la, lb):=block ([n, ret] ,
-    if nlistp (la) or nlistp (lb) then return (false),
-    n:length(la),  
-    if n#length(lb) then return(false),
-    ret: sum( la[i]*lb[i], i,1, n),
-    return (ret)
+listofdiffvars(expr):=block( [ vl: listofvars(expr), dx, rl:[] ],
+    for dx in vl do (
+            if cdiffp(dx) then rl:cons(dx, rl)
+    ),
+    return (rl)
 )$
-*/
-
-lfreeof2(exp, lst):=block([e, s:true ],    
-  for e in lst do s:s and freeof(e,exp),  
-  return(s)
-)$
-
-nlistp(_x):= not(listp(_x))$
-
-/* utility like args, but avoids / or - */
-
-inargsa(z):=block( 
-    if atom(z) then return ([z])
-    else return( substinpart("[",z,0))
-)$
-
-/* 
-* returns true if any of the arguments is true
-*/  
-
-any(blist):=block([ b:false ],
-    if atom(blist) then return (blist),
-    for bb in blist do b: b or bb,
-    return (b)
-)$
-
-isOp(V, oper):= block(
-    if atom(V) then return (false)
-    else return (is(op(V) = oper) or is(op(V) = nounify(oper)))
-)$
-
-opEqp(V):= isOp (V, "=")$
-
-/******* END ******************/
